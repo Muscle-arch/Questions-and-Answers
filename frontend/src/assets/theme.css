@@ -1,0 +1,63 @@
+/* =============================================
+   四川大学智能问答系统 — 主题色变量
+   主色：SCU 校徽深红 #9B1B30
+   ============================================= */
+
+:root {
+  --color-primary: #9B1B30;
+  --color-primary-light: #c0394e;
+  --color-primary-dark: #741422;
+  --color-primary-bg: #fdf2f3;
+
+  --color-bg: #f5f5f5;
+  --color-bg-white: #ffffff;
+  --color-border: #e4e7ed;
+  --color-text: #303133;
+  --color-text-secondary: #909399;
+
+  --sidebar-width: 260px;
+  --header-height: 56px;
+  --border-radius: 8px;
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Element Plus 主题覆盖 */
+:root {
+  --el-color-primary: #9B1B30;
+  --el-color-primary-light-3: #c0394e;
+  --el-color-primary-light-5: #cd6070;
+  --el-color-primary-light-7: #daa0a8;
+  --el-color-primary-light-8: #e4bdc1;
+  --el-color-primary-light-9: #fdf2f3;
+  --el-color-primary-dark-2: #741422;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bbb;
+}
