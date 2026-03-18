@@ -4,25 +4,46 @@
             <!-- 搜索栏 -->
             <div class="search-bar">
                 <div class="campus-selector">
-                    <span class="selector-label">选择校区</span>
+                    <span class="selector-label">校区范围提示</span>
                     <el-radio-group v-model="selectedCampus" @change="handleCampusChange">
+                        <el-radio-button label="all">不限</el-radio-button>
                         <el-radio-button v-for="campus in campusOptions" :key="campus.value" :label="campus.value">
                             {{ campus.label }}
                         </el-radio-button>
                     </el-radio-group>
                 </div>
+                <div class="transport-selector">
+                    <span class="selector-label">交通方式</span>
+                    <el-radio-group v-model="transportMode">
+                        <el-radio-button label="walking">🚶 步行</el-radio-button>
+                        <el-radio-button label="biking">🚴 骑行</el-radio-button>
+                        <el-radio-button label="driving">🚗 开车</el-radio-button>
+                    </el-radio-group>
+                </div>
                 <div class="search-inputs">
-                    <el-input v-model="origin" placeholder="起点（如：第二教学楼、望江楼）" prefix-icon="Location" clearable
-                        size="large" class="search-input" />
+                    <el-autocomplete v-model="origin" :fetch-suggestions="queryOriginSuggestions"
+                        placeholder="起点（如：第二教学楼、望江楼）" clearable size="large" class="search-input"
+                        @select="handleOriginSelect" @input="handleOriginInput">
+                        <template #default="{ item }">
+                            <div class="suggest-item-name">{{ item.name }}</div>
+                            <div class="suggest-item-address">{{ item.address || item.value }}</div>
+                        </template>
+                    </el-autocomplete>
                     <div class="swap-btn" @click="swapPoints" title="互换起终点">⇅</div>
-                    <el-input v-model="destination" placeholder="终点（如：学生食堂、图书馆）" prefix-icon="Aim" clearable
-                        size="large" class="search-input" />
+                    <el-autocomplete v-model="destination" :fetch-suggestions="queryDestinationSuggestions"
+                        placeholder="终点（如：学生食堂、图书馆）" clearable size="large" class="search-input"
+                        @select="handleDestinationSelect" @input="handleDestinationInput">
+                        <template #default="{ item }">
+                            <div class="suggest-item-name">{{ item.name }}</div>
+                            <div class="suggest-item-address">{{ item.address || item.value }}</div>
+                        </template>
+                    </el-autocomplete>
                     <el-button type="primary" size="large" :loading="loading"
                         :disabled="!origin.trim() || !destination.trim()" @click="handleSearch">
                         规划路线
                     </el-button>
                 </div>
-                <p class="search-hint">支持自然语言描述，如"从化工学院到图书馆怎么走"</p>
+                <p class="search-hint">支持任意地点与自然语言描述，如"从化工学院到图书馆怎么走"</p>
             </div>
 
             <!-- 结果区域 -->
@@ -31,15 +52,16 @@
                     <div class="map-wrapper">
                         <MapPanel :polyline="result?.polyline || ''" :origin-lnglat="result?.origin_lnglat || null"
                             :dest-lnglat="result?.dest_lnglat || null" :origin-name="result?.origin_name || origin"
-                            :dest-name="result?.destination_name || destination" :center="currentCampus.center"
-                            :zoom="currentCampus.zoom" :markers="previewMarkers" />
+                            :dest-name="result?.destination_name || destination" :center="currentMapCenter"
+                            :zoom="currentMapZoom" :markers="previewMarkers" :boundary-path="currentCampusBoundary" />
                     </div>
 
                     <div class="steps-panel">
                         <template v-if="result">
                             <div class="steps-summary">
                                 <span class="summary-item">
-                                    <strong>{{ result.distance_text || result.total_distance }}</strong> 步行
+                                    <strong>{{ result.distance_text || result.total_distance }}</strong> {{
+                                        getTransportModeName() }}
                                 </span>
                                 <span class="summary-sep">·</span>
                                 <span class="summary-item">
@@ -63,11 +85,11 @@
 
                         <template v-else>
                             <div class="campus-preview">
-                                <h3>{{ currentCampus.label }}</h3>
-                                <p>已切换到 {{ currentCampus.label }}，地图中展示该校区常用地点。</p>
+                                <h3>常用地点</h3>
+                                <p>可直接点击填充起终点，也支持输入任意地点（校外也可规划）。选择校区后会显示蓝色边界线。</p>
                                 <div class="landmark-list">
-                                    <el-tag v-for="landmark in currentCampus.landmarks" :key="landmark.name"
-                                        effect="plain" class="landmark-tag" @click="fillDestination(landmark.name)">
+                                    <el-tag v-for="landmark in quickPlaces" :key="landmark.name" effect="plain"
+                                        class="landmark-tag" @click="fillDestination(landmark.name)">
                                         {{ landmark.name }}
                                     </el-tag>
                                 </div>
@@ -79,11 +101,11 @@
                 <!-- 空状态 -->
                 <div v-if="!result && !loading" class="nav-empty">
                     <div class="empty-icon">🗺️</div>
-                    <h3>校内路线规划</h3>
-                    <p>先选择校区，再输入起点与终点，获取步行路线指引</p>
+                    <h3>路线规划</h3>
+                    <p>输入起点和终点即可规划路线，支持校外地点</p>
                     <div class="landmark-tags">
-                        <el-tag v-for="landmark in currentCampus.landmarks" :key="landmark.name" effect="plain"
-                            size="small" class="landmark-tag" @click="fillDestination(landmark.name)">
+                        <el-tag v-for="landmark in quickPlaces" :key="landmark.name" effect="plain" size="small"
+                            class="landmark-tag" @click="fillDestination(landmark.name)">
                             {{ landmark.name }}
                         </el-tag>
                     </div>
@@ -93,6 +115,21 @@
                 <div v-if="errorMsg" class="nav-error">
                     <el-alert :title="errorMsg" type="warning" show-icon :closable="false" />
                 </div>
+
+                <el-dialog v-model="candidateDialogVisible" width="560px" :title="candidateDialogTitle">
+                    <p class="candidate-desc">检测到多个匹配地点，请选择最准确的一个：</p>
+                    <el-radio-group v-model="selectedCandidateIndex" class="candidate-list">
+                        <el-radio v-for="(item, index) in candidateList" :key="`${item.name}-${index}`" :label="index"
+                            class="candidate-item">
+                            <div class="candidate-main">{{ item.name }}</div>
+                            <div class="candidate-sub">{{ item.address || item.lnglat.join(',') }}</div>
+                        </el-radio>
+                    </el-radio-group>
+                    <template #footer>
+                        <el-button @click="candidateDialogVisible = false">取消</el-button>
+                        <el-button type="primary" @click="confirmCandidate">确认并继续规划</el-button>
+                    </template>
+                </el-dialog>
             </div>
         </div>
     </AppLayout>
@@ -103,95 +140,121 @@ import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppLayout from '@/layout/AppLayout.vue'
 import MapPanel from '@/components/MapPanel.vue'
-import { getRoute } from '@/api/navigation'
+import { getPlaceSuggestions, getRoute } from '@/api/navigation'
 
-// 文件说明：校园导航页
+// 文件说明：通用导航页
 // 页面对应：路由 /nav
-// 作用：选择校区、输入起终点、展示路线步骤和地图结果
-// 三个校区的前端配置：用于校区切换、地图中心点和地点预览
+// 作用：输入起终点并展示路线步骤和地图结果（类似高德）
+const defaultMapCenter = [104.0665, 30.5728]
+const defaultMapZoom = 12
+
 const campusOptions = [
     {
         value: 'wangjiang',
         label: '望江校区',
         center: [104.0835, 30.6300],
-        zoom: 16,
-        landmarks: [
-            { name: '望江楼', lnglat: [104.0827, 30.6297] },
-            { name: '第二教学楼', lnglat: [104.0832, 30.6301] },
-            { name: '学生食堂', lnglat: [104.0840, 30.6295] },
-            { name: '化工学院', lnglat: [104.0851, 30.6312] }
+        zoom: 15,
+        boundary: [
+            [104.0768, 30.6242],
+            [104.0907, 30.6242],
+            [104.0907, 30.6358],
+            [104.0768, 30.6358]
         ]
     },
     {
         value: 'jiangan',
         label: '江安校区',
-        center: [103.9448, 30.5818],
-        zoom: 15,
-        landmarks: [
-            { name: '江安校区图书馆', lnglat: [103.9421, 30.5812] },
-            { name: '江安一食堂', lnglat: [103.9445, 30.5804] },
-            { name: '青春广场', lnglat: [103.9462, 30.5828] },
-            { name: '综合实验楼', lnglat: [103.9476, 30.5831] }
+        center: [104.0005, 30.5575],
+        zoom: 14,
+        boundary: [
+            [103.9885, 30.5492],
+            [104.0128, 30.5492],
+            [104.0128, 30.5658],
+            [103.9885, 30.5658]
         ]
     },
     {
         value: 'huaxi',
         label: '华西校区',
-        center: [104.0650, 30.6508],
-        zoom: 16,
-        landmarks: [
-            { name: '华西口腔医院', lnglat: [104.0638, 30.6518] },
-            { name: '华西钟楼', lnglat: [104.0649, 30.6506] },
-            { name: '华西临床医学院', lnglat: [104.0662, 30.6498] },
-            { name: '华西东区田径场', lnglat: [104.0674, 30.6511] }
+        center: [104.0658, 30.6416],
+        zoom: 15,
+        boundary: [
+            [104.0586, 30.6365],
+            [104.0736, 30.6365],
+            [104.0736, 30.6468],
+            [104.0586, 30.6468]
         ]
     }
 ]
 
-const selectedCampus = ref('wangjiang')
+const quickPlaces = [
+    { name: '四川大学望江校区东门', lnglat: [104.083932, 30.630838], campus: 'wangjiang' },
+    { name: '四川大学江安校区图书馆', lnglat: [104.000076, 30.556682], campus: 'jiangan' },
+    { name: '四川大学华西校区图书馆', lnglat: [104.067612, 30.641683], campus: 'huaxi' },
+    { name: '天府广场', lnglat: [104.0668, 30.5728], campus: 'all' },
+    { name: '成都东站', lnglat: [104.1477, 30.6199], campus: 'all' },
+    { name: '成都双流国际机场', lnglat: [103.9526, 30.5785], campus: 'all' }
+]
+
+const transportMode = ref('walking') // walking | biking | driving
+const selectedCampus = ref('all')
 const origin = ref('')
 const destination = ref('')
 const loading = ref(false)
 const result = ref(null)
 const errorMsg = ref('')
+const originCandidate = ref(null)
+const destinationCandidate = ref(null)
 
-// 当前选中的校区配置
-const currentCampus = computed(() => {
-    return campusOptions.find((campus) => campus.value === selectedCampus.value) || campusOptions[0]
+const candidateDialogVisible = ref(false)
+const candidateDialogTitle = ref('选择地点')
+const candidateRole = ref('origin')
+const candidateList = ref([])
+const selectedCandidateIndex = ref(0)
+
+const selectedCampusMeta = computed(() => {
+    return campusOptions.find((item) => item.value === selectedCampus.value) || null
 })
 
-// 未规划路线时，地图展示当前校区的地点标记
+const currentMapCenter = computed(() => {
+    return selectedCampusMeta.value?.center || defaultMapCenter
+})
+
+const currentMapZoom = computed(() => {
+    return selectedCampusMeta.value?.zoom || defaultMapZoom
+})
+
+const currentCampusBoundary = computed(() => {
+    return selectedCampusMeta.value?.boundary || []
+})
+
+// 未规划路线时，地图展示常用地点标记
 const previewMarkers = computed(() => {
     if (result.value) return []
-    return currentCampus.value.landmarks.map((landmark) => ({
+    const source = selectedCampus.value === 'all'
+        ? quickPlaces
+        : quickPlaces.filter((item) => item.campus === selectedCampus.value || item.campus === 'all')
+    return source.map((landmark) => ({
         name: landmark.name,
         position: landmark.lnglat
     }))
 })
 
 function handleCampusChange() {
-    // 切换校区时清空上一次路线结果与报错
-    result.value = null
-    errorMsg.value = ''
-
-    // 如果起终点不在当前校区地点列表中，自动清空，避免跨校区误查
-    const currentNames = currentCampus.value.landmarks.map((item) => item.name)
-    if (origin.value && !currentNames.includes(origin.value)) {
-        origin.value = ''
-    }
-    if (destination.value && !currentNames.includes(destination.value)) {
-        destination.value = ''
-    }
+    originCandidate.value = null
+    destinationCandidate.value = null
 }
 
 function fillDestination(name) {
     // 首次点击先填起点，第二次点击填终点
     if (!origin.value) {
         origin.value = name
+        originCandidate.value = null
         return
     }
 
     destination.value = name
+    destinationCandidate.value = null
 }
 
 function swapPoints() {
@@ -199,6 +262,107 @@ function swapPoints() {
     const tmp = origin.value
     origin.value = destination.value
     destination.value = tmp
+
+    const candidateTmp = originCandidate.value
+    originCandidate.value = destinationCandidate.value
+    destinationCandidate.value = candidateTmp
+}
+
+function handleOriginInput() {
+    originCandidate.value = null
+}
+
+function handleDestinationInput() {
+    destinationCandidate.value = null
+}
+
+function handleOriginSelect(item) {
+    originCandidate.value = {
+        name: item.name,
+        lnglat: item.lnglat,
+        address: item.address || ''
+    }
+    origin.value = item.name
+}
+
+function handleDestinationSelect(item) {
+    destinationCandidate.value = {
+        name: item.name,
+        lnglat: item.lnglat,
+        address: item.address || ''
+    }
+    destination.value = item.name
+}
+
+async function queryOriginSuggestions(queryString, cb) {
+    if (!queryString || queryString.trim().length < 2) {
+        cb([])
+        return
+    }
+    try {
+        const list = await getPlaceSuggestions(queryString, selectedCampus.value, 8)
+        cb(list)
+    } catch {
+        cb([])
+    }
+}
+
+async function queryDestinationSuggestions(queryString, cb) {
+    if (!queryString || queryString.trim().length < 2) {
+        cb([])
+        return
+    }
+    try {
+        const list = await getPlaceSuggestions(queryString, selectedCampus.value, 8)
+        cb(list)
+    } catch {
+        cb([])
+    }
+}
+
+function openCandidateDialog(err) {
+    candidateRole.value = err?.role || 'origin'
+    candidateDialogTitle.value = candidateRole.value === 'origin' ? '请选择起点' : '请选择终点'
+    candidateList.value = err?.candidates || []
+    selectedCandidateIndex.value = 0
+    candidateDialogVisible.value = true
+}
+
+async function confirmCandidate() {
+    const selected = candidateList.value[selectedCandidateIndex.value]
+    if (!selected) {
+        ElMessage.warning('请先选择一个候选地点')
+        return
+    }
+
+    if (candidateRole.value === 'origin') {
+        origin.value = selected.name
+        originCandidate.value = {
+            name: selected.name,
+            lnglat: selected.lnglat,
+            address: selected.address || ''
+        }
+    } else {
+        destination.value = selected.name
+        destinationCandidate.value = {
+            name: selected.name,
+            lnglat: selected.lnglat,
+            address: selected.address || ''
+        }
+    }
+
+    candidateDialogVisible.value = false
+    await handleSearch()
+}
+
+// 获取交通方式的中文名称
+function getTransportModeName() {
+    const modeMap = {
+        walking: '步行',
+        biking: '骑行',
+        driving: '开车'
+    }
+    return modeMap[transportMode.value] || '步行'
 }
 
 async function handleSearch() {
@@ -210,14 +374,21 @@ async function handleSearch() {
     errorMsg.value = ''
 
     try {
-        // 向 API 传入结构化参数，便于后端按校区过滤路线
+        // 向导航 API 传入结构化参数，由前端侧完成地图 API 请求与结果解析
         const data = await getRoute({
             origin: origin.value.trim(),
             destination: destination.value.trim(),
-            campus: selectedCampus.value
+            campus: selectedCampus.value,
+            transportMode: transportMode.value,
+            originCandidate: originCandidate.value,
+            destinationCandidate: destinationCandidate.value
         })
         result.value = data
     } catch (err) {
+        if (err?.code === 'MULTIPLE_CANDIDATES') {
+            openCandidateDialog(err)
+            return
+        }
         errorMsg.value = err?.message || '路线规划失败，请检查起终点是否正确'
         ElMessage.error(errorMsg.value)
     } finally {
@@ -451,6 +622,53 @@ async function handleSearch() {
 
 .nav-error {
     padding: 16px 20px;
+}
+
+.candidate-desc {
+    margin: 0 0 10px;
+    color: #666;
+    font-size: 13px;
+}
+
+.candidate-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.candidate-item {
+    display: flex;
+    align-items: flex-start;
+    border: 1px solid #ececec;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-right: 0;
+    width: 100%;
+}
+
+.candidate-main {
+    font-size: 14px;
+    color: #333;
+    font-weight: 600;
+}
+
+.candidate-sub {
+    font-size: 12px;
+    color: #888;
+    margin-top: 2px;
+}
+
+.suggest-item-name {
+    font-size: 13px;
+    color: #333;
+    line-height: 1.35;
+}
+
+.suggest-item-address {
+    font-size: 11px;
+    color: #888;
+    line-height: 1.35;
 }
 
 @media (max-width: 960px) {
