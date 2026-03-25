@@ -131,5 +131,7 @@ function onLogoError(e) {
 .content {
     flex: 1;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 </style>

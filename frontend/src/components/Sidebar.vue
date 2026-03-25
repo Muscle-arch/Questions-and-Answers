@@ -34,35 +34,36 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import { getSessions, createSession, deleteSession, getMessages } from '@/api/chat'
+import { createSession, deleteSession } from '@/api/chat'
 import { Plus, Delete, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 文件说明：问答页左侧会话栏组件
 // 页面对应：智能问答页左侧
-// 作用：展示历史会话、切换会话、新建会话和删除会话
+// 作用：展示本地历史会话、切换会话、新建会话和删除会话
 // 聊天侧边栏：会话列表、新建会话、删除会话
 const chatStore = useChatStore()
 
 onMounted(loadSessions)
 
 async function loadSessions() {
-    // 页面初始化时拉取会话列表
-    try {
-        const res = await getSessions()
-        chatStore.setSessions(res.items || [])
-        // 如果会话列表为空，自动创建一个新会话
-        if (chatStore.sessions.length === 0) {
-            try {
-                const session = await createSession('新的对话')
-                chatStore.addSession(session)
-                chatStore.setCurrentSession(session.id)
-            } catch (e) {
-                console.error('创建初始会话失败:', e)
-            }
+    // 如果本地已有会话，直接使用（从 localStorage 恢复）
+    if (chatStore.sessions.length > 0) {
+        console.log('使用本地会话列表:', chatStore.sessions.length)
+        // 如果没有当前会话，默认选中第一个
+        if (!chatStore.currentSessionId && chatStore.sessions.length > 0) {
+            chatStore.setCurrentSession(chatStore.sessions[0].id)
         }
-    } catch {
-        // 静默处理
+        return
+    }
+
+    // 本地没有会话时，创建新会话
+    try {
+        const session = await createSession('新的对话')
+        chatStore.addSession(session)
+        chatStore.setCurrentSession(session.id)
+    } catch (e) {
+        console.error('创建初始会话失败:', e)
     }
 }
 
@@ -78,14 +79,8 @@ async function handleNewSession() {
 }
 
 async function handleSelectSession(id) {
-    // 切换会话后拉取该会话历史消息
+    // 切换会话：store 会自动从 sessionMessages 加载对应的消息
     chatStore.setCurrentSession(id)
-    try {
-        const res = await getMessages(id)
-        chatStore.setMessages(res.messages || [])
-    } catch (e) {
-        ElMessage.error('加载消息失败')
-    }
 }
 
 async function handleDeleteSession(id) {

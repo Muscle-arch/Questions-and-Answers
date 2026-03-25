@@ -35,7 +35,6 @@ import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
 import { streamChat, createSession } from '@/api/chat'
-import { getSessions } from '@/api/chat'
 
 // 文件说明：智能问答页
 // 页面对应：路由 /chat
@@ -77,24 +76,24 @@ watch(
 )
 
 onMounted(async () => {
-    // 加载会话列表（sidebar 也会加载，这里确保有数据）
-    if (chatStore.sessions.length === 0) {
-        try {
-            const data = await getSessions()
-            chatStore.setSessions(data.items || [])
-            // 如果会话列表为空，自动创建一个新会话
-            if (chatStore.sessions.length === 0) {
-                try {
-                    const session = await createSession('新的对话')
-                    chatStore.addSession(session)
-                    chatStore.setCurrentSession(session.id)
-                } catch (e) {
-                    console.error('创建初始会话失败:', e)
-                }
-            }
-        } catch (e) {
-            // 忽略
+    // 如果有本地保存的会话，恢复当前会话状态
+    if (chatStore.sessions.length > 0) {
+        console.log('已恢复历史对话，会话数:', chatStore.sessions.length)
+        // 如果有当前会话ID，确保消息已加载
+        if (chatStore.currentSessionId) {
+            // 消息已通过 store 的 syncCurrentMessages 自动加载
+            console.log('当前会话消息数:', chatStore.messages.length)
         }
+        return
+    }
+
+    // 没有会话时，创建新会话
+    try {
+        const session = await createSession('新的对话')
+        chatStore.addSession(session)
+        chatStore.setCurrentSession(session.id)
+    } catch (e) {
+        console.error('创建初始会话失败:', e)
     }
 })
 
@@ -155,6 +154,36 @@ async function handleSend(text) {
     padding: 24px 0;
     display: flex;
     flex-direction: column;
+    height: 100%;
+    max-height: calc(100vh - var(--header-height) - 80px);
+}
+
+/* 自定义滚动条样式 - 始终显示 */
+.chat-body::-webkit-scrollbar {
+    width: 8px;
+    display: block;
+}
+
+.chat-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.chat-body::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+    min-height: 30px;
+}
+
+.chat-body::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Firefox 滚动条始终显示 */
+.chat-body {
+    scrollbar-width: thin;
+    scrollbar-color: #c1c1c1 #f1f1f1;
+    overflow-y: scroll;
 }
 
 .chat-empty {
