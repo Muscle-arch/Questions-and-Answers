@@ -34,52 +34,39 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import { createSession, deleteSession } from '@/api/chat'
 import { Plus, Delete, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 文件说明：问答页左侧会话栏组件
 // 页面对应：智能问答页左侧
-// 作用：展示本地历史会话、切换会话、新建会话和删除会话
+// 作用：展示本地数据库中的历史会话、切换会话、新建会话和删除会话
 // 聊天侧边栏：会话列表、新建会话、删除会话
 const chatStore = useChatStore()
 
 onMounted(loadSessions)
 
-async function loadSessions() {
-    // 如果本地已有会话，直接使用（从 localStorage 恢复）
-    if (chatStore.sessions.length > 0) {
-        console.log('使用本地会话列表:', chatStore.sessions.length)
-        // 如果没有当前会话，默认选中第一个
-        if (!chatStore.currentSessionId && chatStore.sessions.length > 0) {
-            chatStore.setCurrentSession(chatStore.sessions[0].id)
-        }
-        return
-    }
-
-    // 本地没有会话时，创建新会话
-    try {
-        const session = await createSession('新的对话')
-        chatStore.addSession(session)
+function loadSessions() {
+    // 从本地数据库刷新会话列表
+    chatStore.refreshSessions()
+    
+    // 如果会话列表为空，自动创建一个新会话
+    if (chatStore.sessions.length === 0) {
+        const session = chatStore.createNewSession('新的对话')
         chatStore.setCurrentSession(session.id)
-    } catch (e) {
-        console.error('创建初始会话失败:', e)
+    } else if (!chatStore.currentSessionId) {
+        // 如果有会话但没有当前会话，选中第一个
+        chatStore.setCurrentSession(chatStore.sessions[0].id)
     }
 }
 
-async function handleNewSession() {
+function handleNewSession() {
     // 新建空会话后，立即切换到该会话
-    try {
-        const session = await createSession('新的对话')
-        chatStore.addSession(session)
-        await handleSelectSession(session.id)
-    } catch (e) {
-        ElMessage.error(e.message)
-    }
+    const session = chatStore.createNewSession('新的对话')
+    chatStore.setCurrentSession(session.id)
 }
 
-async function handleSelectSession(id) {
-    // 切换会话：store 会自动从 sessionMessages 加载对应的消息
+function handleSelectSession(id) {
+    // 切换会话（从本地数据库加载消息）
     chatStore.setCurrentSession(id)
 }
 
@@ -89,7 +76,6 @@ async function handleDeleteSession(id) {
         await ElMessageBox.confirm('确认删除该对话记录？', '提示', {
             confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
         })
-        await deleteSession(id)
         chatStore.removeSession(id)
     } catch {
         // 取消操作，静默处理

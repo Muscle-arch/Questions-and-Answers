@@ -1,133 +1,88 @@
 import { defineStore } from "pinia";
-import { ref, watch } from "vue";
+import { ref } from "vue";
+import * as chatDB from "@/utils/chatDatabase.js";
 
 // 文件说明：聊天状态模块
 // 页面对应：智能问答页、左侧会话列表、消息显示组件
-// 作用：集中管理会话列表、当前会话、消息列表和流式输出状态，支持多会话历史对话持久化
-// 聊天状态仓库：维护会话列表、每个会话的消息、当前会话与流式消息状态
-
-const STORAGE_KEY = 'scu_chat_sessions_v2';
-
-// 从 localStorage 加载历史数据
-function loadFromStorage() {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-  } catch (e) {
-    console.error('加载历史对话失败:', e);
-  }
-  return null;
-}
-
-// 保存到 localStorage
-function saveToStorage(sessions, currentSessionId, sessionMessages) {
-  try {
-    const data = {
-      sessions,
-      currentSessionId,
-      sessionMessages, // 每个会话的消息映射 { sessionId: messages[] }
-      savedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error('保存历史对话失败:', e);
-  }
-}
+// 作用：集中管理会话列表、当前会话、消息列表和流式输出状态
+// 数据持久化：使用本地数据库 chatDatabase 存储会话和消息
 
 export const useChatStore = defineStore("chat", () => {
-  // 尝试从 localStorage 恢复数据
-  const savedData = loadFromStorage();
-
-  const sessions = ref(savedData?.sessions || []); // 会话列表
-  const currentSessionId = ref(savedData?.currentSessionId || null);
-  const sessionMessages = ref(savedData?.sessionMessages || {}); // 每个会话的消息映射
-  const isStreaming = ref(false); // 是否正在流式接收
-
-  // 当前会话的消息（计算属性）
+  // 从本地数据库加载会话列表
+  const sessions = ref(chatDB.getAllSessions());
+  const currentSessionId = ref(null);
+  // 当前会话的消息列表
   const messages = ref([]);
+  const isStreaming = ref(false);
 
-  // 同步当前会话的消息
-  function syncCurrentMessages() {
-    if (currentSessionId.value) {
-      messages.value = sessionMessages.value[currentSessionId.value] || [];
-    } else {
-      messages.value = [];
-    }
-  }
-
-  // 初始化时同步消息
-  syncCurrentMessages();
-
-  // 监听数据变化，自动保存到 localStorage
-  watch(
-    () => ({ 
-      sessions: sessions.value, 
-      currentSessionId: currentSessionId.value, 
-      sessionMessages: sessionMessages.value 
-    }),
-    (newVal) => {
-      saveToStorage(newVal.sessions, newVal.currentSessionId, newVal.sessionMessages);
-    },
-    { deep: true }
-  );
-
+  // 设置会话列表
   function setSessions(list) {
     sessions.value = list;
   }
 
+  // 添加新会话（保存到数据库）
   function addSession(session) {
     sessions.value.unshift(session);
-    // 初始化新会话的消息数组
-    sessionMessages.value[session.id] = [];
   }
 
+  // 从数据库创建新会话
+  function createNewSession(title = '新的对话') {
+    const session = chatDB.createSession(title);
+    sessions.value.unshift(session);
+    return session;
+  }
+
+  // 删除会话（从数据库删除）
   function removeSession(id) {
+    chatDB.deleteSession(id);
     sessions.value = sessions.value.filter((s) => s.id !== id);
-    // 删除该会话的消息
-    delete sessionMessages.value[id];
     if (currentSessionId.value === id) {
       currentSessionId.value = null;
       messages.value = [];
     }
   }
 
+  // 切换会话（从数据库加载消息）
   function setCurrentSession(id) {
-    // 保存当前会话的消息
-    if (currentSessionId.value) {
-      sessionMessages.value[currentSessionId.value] = [...messages.value];
-    }
-    // 切换会话
     currentSessionId.value = id;
-    // 加载新会话的消息
-    messages.value = sessionMessages.value[id] || [];
+    if (id) {
+      messages.value = chatDB.getSessionMessages(id);
+    } else {
+      messages.value = [];
+    }
   }
 
+  // 设置消息列表
   function setMessages(list) {
     messages.value = list;
-    // 同步到 sessionMessages
-    if (currentSessionId.value) {
-      sessionMessages.value[currentSessionId.value] = list;
-    }
   }
 
+  // 添加用户消息（保存到数据库）
   function appendUserMessage(content) {
-    const msg = {
+    if (!currentSessionId.value) return;
+    
+    // 保存到数据库
+    chatDB.addUserMessage(currentSessionId.value, content);
+    
+    // 更新内存中的消息列表
+    messages.value.push({
       id: Date.now(),
       role: "user",
       content,
       created_at: new Date().toISOString(),
-    };
-    messages.value.push(msg);
-    // 同步到 sessionMessages
-    if (currentSessionId.value) {
-      sessionMessages.value[currentSessionId.value] = [...messages.value];
-    }
+    });
+    
+    // 更新会话列表顺序
+    sessions.value = chatDB.getAllSessions();
   }
 
-  // 开始一条新的 AI 消息（流式占位）
+  // 开始 AI 消息（保存到数据库）
   function startAssistantMessage() {
+    if (!currentSessionId.value) return null;
+    
+    // 保存到数据库
+    chatDB.startAssistantMessage(currentSessionId.value);
+    
     const msg = {
       id: "streaming",
       role: "assistant",
@@ -140,48 +95,60 @@ export const useChatStore = defineStore("chat", () => {
     return msg;
   }
 
-  // 追加增量文字到最后一条 AI 消息
+  // 追加 AI 消息内容（保存到数据库）
   function appendDelta(delta) {
+    if (!currentSessionId.value) return;
+    
     const last = messages.value[messages.value.length - 1];
     if (last && last.role === "assistant") {
       last.content += delta;
+      // 同步到数据库
+      chatDB.appendAssistantContent(currentSessionId.value, delta);
     }
   }
 
-  // 流结束，更新最后一条消息
-  function finishAssistantMessage({ message_id, sources, is_location, location_data, show_nav_button, nav_query, is_navigation, nav_data }) {
+  // 完成 AI 消息（保存到数据库）
+  function finishAssistantMessage(result) {
+    if (!currentSessionId.value) {
+      isStreaming.value = false;
+      return;
+    }
+    
+    const { message_id, sources, ...extra } = result || {};
     const last = messages.value[messages.value.length - 1];
+    
     if (last && last.role === "assistant") {
       last.id = message_id;
       last.sources = sources || null;
-      // 位置和导航相关字段
-      if (is_location) last.is_location = is_location;
-      if (location_data) last.location_data = location_data;
-      if (show_nav_button) last.show_nav_button = show_nav_button;
-      if (nav_query) last.nav_query = nav_query;
-      if (is_navigation) last.is_navigation = is_navigation;
-      if (nav_data) last.nav_data = nav_data;
+      Object.assign(last, extra);
     }
+    
     isStreaming.value = false;
-    // 同步到 sessionMessages
-    if (currentSessionId.value) {
-      sessionMessages.value[currentSessionId.value] = [...messages.value];
+    
+    // 同步到数据库
+    chatDB.finishAssistantMessage(currentSessionId.value, result);
+  }
+
+  // 更新会话标题（保存到数据库）
+  function updateSessionTitle(sessionId, title) {
+    chatDB.updateSessionTitle(sessionId, title);
+    const session = sessions.value.find((s) => s.id === sessionId);
+    if (session) {
+      session.title = title;
     }
   }
 
-  // 更新侧边栏会话标题（取第一条用户消息）
-  function updateSessionTitle(sessionId, title) {
-    const session = sessions.value.find((s) => s.id === sessionId);
-    if (session) session.title = title;
+  // 刷新会话列表（从数据库重新加载）
+  function refreshSessions() {
+    sessions.value = chatDB.getAllSessions();
   }
 
-  // 清空所有历史对话
+  // 清空所有对话数据
   function clearAllHistory() {
+    chatDB.clearAllChatData();
     sessions.value = [];
     currentSessionId.value = null;
     messages.value = [];
-    sessionMessages.value = {};
-    localStorage.removeItem(STORAGE_KEY);
   }
 
   return {
@@ -191,6 +158,7 @@ export const useChatStore = defineStore("chat", () => {
     isStreaming,
     setSessions,
     addSession,
+    createNewSession,
     removeSession,
     setCurrentSession,
     setMessages,
@@ -199,6 +167,7 @@ export const useChatStore = defineStore("chat", () => {
     appendDelta,
     finishAssistantMessage,
     updateSessionTitle,
+    refreshSessions,
     clearAllHistory,
   };
 });

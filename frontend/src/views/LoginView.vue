@@ -66,7 +66,7 @@ async function handleLogin() {
 
     loading.value = true
     try {
-        const data = await login(form.username, form.password)
+        const data = await login({ username: form.username, password: form.password })
         userStore.setAuth(data)
         ElMessage.success('登录成功')
         // 如果来自受保护页，登录后回到原页面；否则回首页

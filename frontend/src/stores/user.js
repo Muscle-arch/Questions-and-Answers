@@ -30,7 +30,14 @@ export const useUserStore = defineStore("user", () => {
   }
 
   // 主动退出登录
-  function logout() {
+  async function logout() {
+    // 调用 API 清除登录状态
+    try {
+      await import("@/api/user").then(m => m.logout());
+    } catch (e) {
+      console.error("退出登录失败:", e);
+    }
+    // 清除内存状态
     token.value = "";
     userInfo.value = null;
     localStorage.removeItem(TOKEN_KEY);

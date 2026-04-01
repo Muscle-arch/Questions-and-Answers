@@ -44,9 +44,9 @@ const userStore = useUserStore()
 const router = useRouter()
 const logoUrl = '/scu-logo.svg'
 
-function handleLogout() {
+async function handleLogout() {
     // 退出后清空登录态并跳转登录页
-    userStore.logout()
+    await userStore.logout()
     router.push('/login')
 }
 

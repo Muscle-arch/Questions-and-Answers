@@ -86,9 +86,9 @@ async function handleRegister() {
 
     loading.value = true
     try {
-        await register(form.username, form.password)
+        await register({ username: form.username, password: form.password })
         // 注册成功后自动登录，减少一次手动登录操作
-        const data = await login(form.username, form.password)
+        const data = await login({ username: form.username, password: form.password })
         userStore.setAuth(data)
         ElMessage.success('注册成功，欢迎使用！')
         router.push('/')
