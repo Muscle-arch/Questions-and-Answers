@@ -32,8 +32,9 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, watch, nextTick } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
 import { Plus, Delete, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -42,12 +43,23 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 // 作用：展示本地数据库中的历史会话、切换会话、新建会话和删除会话
 // 聊天侧边栏：会话列表、新建会话、删除会话
 const chatStore = useChatStore()
+const userStore = useUserStore()
 
 onMounted(loadSessions)
 
-function loadSessions() {
+// 监听用户变化，切换用户时重新加载会话列表
+watch(() => userStore.userInfo?.id, (newUserId, oldUserId) => {
+    if (newUserId !== oldUserId) {
+        loadSessions()
+    }
+})
+
+async function loadSessions() {
     // 从本地数据库刷新会话列表
     chatStore.refreshSessions()
+    
+    // 等待响应式更新完成
+    await nextTick()
     
     // 如果会话列表为空，自动创建一个新会话
     if (chatStore.sessions.length === 0) {

@@ -30,7 +30,8 @@ export function mockLogin({ username, password }) {
   if (found && found.password !== password) {
     return Promise.reject(new Error("用户名或密码错误"));
   }
-  const user = found || { id: 999, username };
+  // 为未注册用户根据用户名生成稳定的唯一 ID，避免不同用户共享同一个 ID 导致历史记录混淆
+  const user = found || { id: Array.from(username).reduce((hash, c) => hash * 31 + c.charCodeAt(0), 0) >>> 0, username };
   const fakeToken = btoa(`mock:${username}:${Date.now()}`);
   return Promise.resolve({
     access_token: fakeToken,
@@ -44,6 +45,6 @@ export function mockLogin({ username, password }) {
 export function mockGetMe() {
   // 从 localStorage 读取上一次登录用户，模拟 /auth/me
   const raw = localStorage.getItem("scu_user");
-  const user = raw ? JSON.parse(raw) : { id: 999, username: "mock_user" };
+  const user = raw ? JSON.parse(raw) : { id: 0, username: "mock_user" };
   return Promise.resolve({ ...user, created_at: "2026-01-01T00:00:00" });
 }

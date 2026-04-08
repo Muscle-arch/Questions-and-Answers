@@ -37,6 +37,13 @@ export const useUserStore = defineStore("user", () => {
     } catch (e) {
       console.error("退出登录失败:", e);
     }
+    // 重置聊天状态内存（保留 localStorage，不同用户数据互不影响）
+    try {
+      const { useChatStore } = await import("@/stores/chat.js");
+      useChatStore().resetForUserSwitch();
+    } catch (e) {
+      console.error("重置聊天状态失败:", e);
+    }
     // 清除内存状态
     token.value = "";
     userInfo.value = null;

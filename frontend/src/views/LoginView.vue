@@ -36,6 +36,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '@/api/user'
 import { useUserStore } from '@/stores/user'
+import { useChatStore } from '@/stores/chat'
 
 // 文件说明：登录页
 // 页面对应：路由 /login
@@ -43,6 +44,7 @@ import { useUserStore } from '@/stores/user'
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const chatStore = useChatStore()
 const logoUrl = '/scu-logo.svg'
 
 const formRef = ref(null)
@@ -68,6 +70,8 @@ async function handleLogin() {
     try {
         const data = await login({ username: form.username, password: form.password })
         userStore.setAuth(data)
+        // 登录成功后，加载当前用户的历史会话
+        chatStore.refreshSessions()
         ElMessage.success('登录成功')
         // 如果来自受保护页，登录后回到原页面；否则回首页
         const redirect = route.query.redirect || '/'

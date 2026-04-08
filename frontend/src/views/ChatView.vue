@@ -34,12 +34,14 @@ import AppLayout from '@/layout/AppLayout.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import { useChatStore } from '@/stores/chat'
+import { useUserStore } from '@/stores/user'
 import { streamChat } from '@/api/chat'
 
 // 文件说明：智能问答页
 // 页面对应：路由 /chat
 // 作用：承接问答主流程，包括展示消息、发送问题、流式接收回复
 const chatStore = useChatStore()
+const userStore = useUserStore()
 const bodyRef = ref(null)
 const bottomAnchor = ref(null)
 
@@ -75,14 +77,35 @@ watch(
     scrollToBottom
 )
 
-onMounted(() => {
-    // 从本地数据库加载会话列表
+onMounted(async () => {
+    // 从本地数据库加载当前用户的会话列表
     chatStore.refreshSessions()
+    
+    // 等待响应式更新完成
+    await nextTick()
     
     // 如果会话列表为空，自动创建一个新会话
     if (chatStore.sessions.length === 0) {
         const session = chatStore.createNewSession('新的对话')
         chatStore.setCurrentSession(session.id)
+    }
+})
+
+// 监听用户登录状态变化，切换用户时重新加载对应的历史会话
+watch(() => userStore.userInfo?.id, async (newUserId, oldUserId) => {
+    if (newUserId !== oldUserId) {
+        // 用户切换时，重置聊天状态并加载新用户的数据
+        chatStore.resetForUserSwitch()
+        chatStore.refreshSessions()
+        
+        // 等待响应式更新完成
+        await nextTick()
+        
+        // 如果新用户没有会话，创建一个默认会话
+        if (chatStore.sessions.length === 0) {
+            const session = chatStore.createNewSession('新的对话')
+            chatStore.setCurrentSession(session.id)
+        }
     }
 })
 

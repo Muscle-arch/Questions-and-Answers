@@ -26,13 +26,18 @@ request.interceptors.response.use(
   // 约定直接返回 response.data，调用方无需再写 .data
   (response) => response.data,
   (error) => {
+    console.error("[Request Error]", error);
     if (error.response?.status === 401) {
       // 登录态失效时清理本地缓存并跳回登录页
       localStorage.removeItem("scu_token");
       localStorage.removeItem("scu_user");
       router.push("/login");
     }
-    const msg = error.response?.data?.message || error.message || "请求失败";
+    // 处理网络错误
+    if (!error.response) {
+      return Promise.reject(new Error("网络错误，请检查后端服务是否启动"));
+    }
+    const msg = error.response?.data?.message || error.response?.data?.detail?.message || error.message || "请求失败";
     return Promise.reject(new Error(msg));
   },
 );
