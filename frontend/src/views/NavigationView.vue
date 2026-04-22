@@ -776,13 +776,16 @@ async function handleSearch() {
     padding: 14px 20px;
     font-size: 14px;
     color: var(--color-text-regular);
+    background: rgba(255, 255, 255, 0.88);
     border-bottom: 1px solid var(--color-border-light);
     transition: all 0.3s ease;
     animation: slide-up-fade 0.4s ease-out both;
+    position: relative;
+    z-index: 1;
 }
 
 .step-item:hover {
-    background: var(--color-bg);
+    background: rgba(255, 255, 255, 0.95);
 }
 
 .step-num {
