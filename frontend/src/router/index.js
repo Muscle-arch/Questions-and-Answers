@@ -32,6 +32,21 @@ const routes = [
     name: "Navigation",
     component: () => import("@/views/NavigationView.vue"),
   },
+  {
+    path: "/tools",
+    name: "Tools",
+    component: () => import("@/views/ToolsView.vue"),
+  },
+  {
+    path: "/news",
+    name: "NewsList",
+    component: () => import("@/views/NewsListView.vue"),
+  },
+  {
+    path: "/news/:id",
+    name: "NewsDetail",
+    component: () => import("@/views/NewsDetailView.vue"),
+  },
 ];
 
 const router = createRouter({

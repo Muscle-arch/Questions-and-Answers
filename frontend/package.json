@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "powershell -Command \"netstat -ano | Select-String ':5175 ' | ForEach-Object { $procId = ($_ -split '\\s+')[-1]; if ($procId -match '^\\d+$') { taskkill /PID $procId /F } }\"; vite",
     "build": "vite build",
     "preview": "vite preview"
   },
