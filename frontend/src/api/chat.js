@@ -6,10 +6,55 @@ import {
   mockGetMessages,
 } from "@/mock/chat";
 import { semanticSearch, buildSystemPrompt } from "@/utils/semanticSearch.js";
+import { addUnansweredQuestion } from "@/utils/knowledgeBaseDB.js";
 import { streamChatCompletion } from "@/utils/openai.js";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 const AMAP_WEB_KEY = import.meta.env.VITE_AMAP_WEB_KEY || import.meta.env.VITE_AMAP_JS_KEY || "";
+
+// 从 localStorage 获取当前登录用户信息
+function getCurrentUser() {
+  try {
+    const userStr = localStorage.getItem('scu_user');
+    if (userStr) return JSON.parse(userStr);
+  } catch (e) {
+    console.error('[ChatAPI] 读取用户信息失败:', e);
+  }
+  return null;
+}
+
+// 意图检测：是否询问个人身份信息（名字、账户、密码）
+function isAskingPersonalInfo(message) {
+  const patterns = [
+    /我(的)?(名字|姓名|用户名|账户|账号|昵称)/,
+    /我(叫)?什么名字/,
+    /我(是)?谁/,
+    /(告诉|说|报)一下?我(的)?名字/,
+    /(告诉|说|报)一下?我(的)?用户名/,
+    /我(的)?密码/,
+    /我(是)?哪个用户/,
+    /我(的)?账户信息/,
+  ];
+  return patterns.some(p => p.test(message));
+}
+
+// 判断是否应该收集为未回答问题（过滤闲聊/指令/个人信息类）
+function shouldCollectUnanswered(message) {
+  // 不收集个人身份类问题
+  if (isAskingPersonalInfo(message)) return false;
+
+  // 不收集纯指令/闲聊类
+  const chatPatterns = [
+    /(说|讲|重复|念)([一二两三四五六七八九十\d]+)?遍/,
+    /(讲个?|说个?)笑话/,
+    /(你好|您好|嗨|哈喽|在吗|在不在)/,
+    /(谢谢|感谢|拜拜|再见|晚安|早安)/,
+    /^(嗯|哦|啊|好|行|可以|知道了|明白)$/,
+  ];
+  if (chatPatterns.some(p => p.test(message))) return false;
+
+  return true;
+}
 
 // 意图检测：是否询问自己的位置
 function isAskingLocation(message) {
@@ -131,6 +176,32 @@ async function streamChatWithKnowledgeBase(sessionId, message, onDelta, onDone) 
       }
     }
 
+    // 0.3 检查是否询问个人身份信息
+    if (isAskingPersonalInfo(message)) {
+      const user = getCurrentUser();
+      const username = user?.username || '同学';
+      let answer = '';
+      if (/密码/.test(message)) {
+        answer = '出于安全考虑，我无法查看或提供您的密码信息。如您忘记密码，请前往登录页点击"忘记密码"进行重置。';
+      } else {
+        answer = `您的用户名是：**${username}**。很高兴为您服务！`;
+      }
+      const words = answer.split("");
+      let i = 0;
+      const timer = setInterval(() => {
+        if (i < words.length) {
+          onDelta(words[i++]);
+        } else {
+          clearInterval(timer);
+          onDone({
+            message_id: Date.now(),
+            sources: [],
+          });
+        }
+      }, 30);
+      return;
+    }
+
     // 0.5 检查是否询问导航/路线
     if (isAskingNavigation(message)) {
       const answer = "我可以帮您导航！请点击下方按钮前往导航页面，输入起点和终点进行路线规划。";
@@ -189,7 +260,12 @@ async function streamChatWithKnowledgeBase(sessionId, message, onDelta, onDone) 
       return;
     }
 
-    // 4. 没有匹配结果，尝试调用 OpenAI API
+    // 4. 没有匹配结果，判断是否应该记录为未回答问题
+    if (shouldCollectUnanswered(message)) {
+      addUnansweredQuestion(message);
+    }
+
+    // 5. 尝试调用 OpenAI API
     const systemPrompt = buildSystemPrompt([]);
     const messages = [
       { role: "system", content: systemPrompt },
@@ -205,6 +281,7 @@ async function streamChatWithKnowledgeBase(sessionId, message, onDelta, onDone) 
         onDone({
           message_id: Date.now(),
           sources: [],
+          is_unanswered: true,
         });
       },
       (error) => {
@@ -214,6 +291,7 @@ async function streamChatWithKnowledgeBase(sessionId, message, onDelta, onDone) 
         onDone({
           message_id: Date.now(),
           sources: [],
+          is_unanswered: true,
         });
       }
     );

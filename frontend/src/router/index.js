@@ -47,6 +47,12 @@ const routes = [
     name: "NewsDetail",
     component: () => import("@/views/NewsDetailView.vue"),
   },
+  {
+    path: "/supplement",
+    name: "KnowledgeSupplement",
+    component: () => import("@/views/KnowledgeSupplementView.vue"),
+    meta: { requiresAuth: true },
+  },
 ];
 
 const router = createRouter({

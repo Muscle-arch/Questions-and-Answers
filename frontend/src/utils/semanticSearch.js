@@ -3,6 +3,7 @@
 // 功能：将知识库问题向量化，支持语义相似度匹配
 
 import { KNOWLEDGE_BASE } from "@/mock/knowledgeBase.js";
+import { getExtendedKnowledgeBase } from "./knowledgeBaseDB.js";
 import { getEmbedding, cosineSimilarity } from "./openai.js";
 
 // 缓存知识库的向量嵌入
@@ -88,13 +89,21 @@ async function preFilterCandidates(query) {
 }
 
 /**
+ * 获取完整知识库（原始 + 用户扩展）
+ */
+function getFullKnowledgeBase() {
+  const extended = getExtendedKnowledgeBase();
+  return [...KNOWLEDGE_BASE, ...extended];
+}
+
+/**
  * 降级方案：关键词搜索（当 Embedding API 失败时使用）
  */
 function fallbackKeywordSearch(query, topK = 3) {
   const lowerQuery = query.toLowerCase();
   const results = [];
 
-  for (const item of KNOWLEDGE_BASE) {
+  for (const item of getFullKnowledgeBase()) {
     let score = 0;
 
     // 问题匹配

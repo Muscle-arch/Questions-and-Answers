@@ -44,19 +44,59 @@
             </div>
             <span>暂无对话记录</span>
         </div>
+
+        <!-- 补充知识按钮 -->
+        <div class="sidebar-footer" v-if="hasUnanswered">
+            <button class="supplement-btn" @click="goToSupplement">
+                <span class="supplement-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20h9"/>
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                    </svg>
+                </span>
+                <span class="supplement-text">补充知识</span>
+                <span class="supplement-badge">{{ unansweredCount }}</span>
+            </button>
+        </div>
     </div>
 </template>
 
 <script setup>
-import { onMounted, watch, nextTick } from 'vue'
+import { onMounted, onUnmounted, watch, nextTick, ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getUnansweredCount } from '@/utils/knowledgeBaseDB.js'
 
 const chatStore = useChatStore()
 const userStore = useUserStore()
+const router = useRouter()
 
-onMounted(loadSessions)
+const unansweredCount = ref(0)
+
+const hasUnanswered = computed(() => unansweredCount.value > 0)
+
+function refreshUnansweredCount() {
+  unansweredCount.value = getUnansweredCount()
+}
+
+function goToSupplement() {
+  router.push('/supplement')
+}
+
+let intervalId = null
+
+onMounted(() => {
+    loadSessions()
+    refreshUnansweredCount()
+    // 定时刷新未回答问题数量
+    intervalId = setInterval(refreshUnansweredCount, 3000)
+})
+
+onUnmounted(() => {
+    if (intervalId) clearInterval(intervalId)
+})
 
 watch(() => userStore.userInfo?.id, (newUserId, oldUserId) => {
     if (newUserId !== oldUserId) {
@@ -330,6 +370,68 @@ async function handleDeleteSession(id) {
 .empty-icon-wrapper svg {
     width: 100%;
     height: 100%;
+}
+
+/* 补充知识按钮 */
+.sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border-light);
+    background: var(--color-bg-white);
+}
+
+.supplement-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border: 1px solid #fbbf24;
+    border-radius: var(--border-radius);
+    color: #92400e;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.supplement-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+    background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%);
+}
+
+.supplement-icon svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.supplement-text {
+    flex: 1;
+    text-align: left;
+}
+
+.supplement-badge {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
 }
 
 /* 列表过渡动画 */
